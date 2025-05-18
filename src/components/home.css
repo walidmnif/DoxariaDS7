@@ -532,3 +532,138 @@ button.save-button:hover {
   justify-content: flex-end;
   margin-top: 20px;
 }
+.FraudAlert {
+  margin: 20px 0;
+  padding: 15px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background-color: #fff8f8;
+  border-left: 5px solid;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+}
+
+.FraudAlert.high {
+  border-left-color: #e31515;
+  background-color: #ffebeb;
+}
+
+.FraudAlert.medium {
+  border-left-color: #e7811a;
+  background-color: #fff4eb;
+}
+
+.FraudAlert.low {
+  border-left-color: #4d79ff;
+  background-color: #ebf0ff;
+}
+.FraudAlert.normal {
+  border-left-color: #2a7e25;
+  background-color: #f1ecec;
+}
+
+.fraud-detections-section {
+  margin-top: 2rem;
+  padding: 2rem;
+  background-color: #ffffff;
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+}
+
+.fraud-detections-section h3 {
+  font-size: 1.1rem;
+  margin-bottom: 1.5rem;
+  color: #d32f2f;
+  font-weight: 600;
+  text-align: left;
+}
+.fraud-detections-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.fraud-detection-card {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  border: 1px solid #fad1ba;
+  background-color: #faf8f3;
+  padding: 15px;
+  border-radius: 8px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+  transition: transform 0.2s;
+}
+
+.fraud-detection-card:hover {
+  transform: translateY(-4px);
+}
+
+.fraud-image-container {
+  flex: 0 0 160px;
+  height: 110px;
+  margin-right: 20px;
+  overflow: hidden;
+  border-radius: 4px;
+  background-color: #fff;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.fraud-image-container img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: cover;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+}
+
+.fraud-details {
+  flex: 1;
+  background-color: transparent;
+  padding: 0;
+}
+
+.fraud-details h4 {
+  margin-bottom: 8px;
+  color: #c62828;
+  font-size: 1.1rem;
+}
+
+.fraud-details p {
+  margin: 4px 0;
+  font-size: 0.95rem;
+  color: #444;
+}
+.fraudAlert.normal {
+  background-color: #e6f7e6;
+  border: 1px solid #a5d6a7;
+  color: #2e7d32;
+  padding: 20px;
+  border-radius: 8px;
+  text-align: center;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-top: 2rem;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
+}
+
+.fraudAlert .fraud-content {
+  max-width: 500px;
+}
+
+.fraudAlert h3 {
+  margin: 0 0 8px 0;
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: #1b5e20;
+}
+
+.fraudAlert p {
+  margin: 0;
+  font-size: 0.95rem;
+  color: #388e3c;
+}

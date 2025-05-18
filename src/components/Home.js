@@ -1,9 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import "./home.css";
-import { FaVolumeUp } from "react-icons/fa";
+import { FaVolumeUp, FaUpload } from "react-icons/fa";
 import axios from "axios";
-import { FaUpload } from "react-icons/fa"; // Font Awesome Upload icon
 
 const NavBar = ({ handleLogout, user }) => {
   const [showDropdown, setShowDropdown] = useState(false);
@@ -14,7 +13,7 @@ const NavBar = ({ handleLogout, user }) => {
         <h4>{user}</h4>
         {showDropdown && (
           <div className="dropdown-menu">
-            <button onClick={handleLogout}>Logout</button>
+            <button onClick={handleLogout}>Déconnexion</button>
           </div>
         )}
       </div>
@@ -52,14 +51,16 @@ const EditableCell = ({ value, onChange }) => {
 const Home = (props) => {
   const navigate = useNavigate();
   const [language, setLanguage] = useState("fr");
-  const [data, setData] = useState();
+  const [extractedData, setExtractedData] = useState(null);
   const [translatedData, setTranslatedData] = useState(null);
   const [selectedImageName, setSelectedImageName] = useState(null);
   const [documentType, setDocumentType] = useState(null);
   const [user] = useState(() => JSON.parse(localStorage.getItem("user")) || null);
   const [loadingTranslation, setLoadingTranslation] = useState(false);
-  const [loadingTable, setLoadingTable] = useState(false); 
-  const [abreviation, setAbreviation] = useState(null);
+  const [loadingTable, setLoadingTable] = useState(false);
+  const [abbreviations, setAbbreviations] = useState(null);
+  const [fraudDetections, setFraudDetections] = useState([]);
+  const [medicalActs, setMedicalActs] = useState([]);
   const [previewImage, setPreviewImage] = useState(null);
   const [previewMode, setPreviewMode] = useState(false);
   const [newColumnName, setNewColumnName] = useState("");
@@ -69,7 +70,7 @@ const Home = (props) => {
   const Logout = () => {
     props.handleLogout();
     navigate("/login");
-  }; 
+  };
 
   useEffect(() => {
     if (language !== "fr") {
@@ -77,13 +78,14 @@ const Home = (props) => {
     } else {
       setTranslatedData(null);
     }
-  }, [language]);
+  }, [language, extractedData, medicalActs]);
 
   const translateData = async (selectedLang) => {
     setLoadingTranslation(true);
     try {
       const response = await axios.post("http://127.0.0.1:8000/api/translate/", {
-        ...data,
+        extracted_data: extractedData,
+        medical_acts: medicalActs,
         language: selectedLang,
       });
       setTranslatedData(response.data);
@@ -102,15 +104,19 @@ const Home = (props) => {
       setPreviewImage(URL.createObjectURL(file));
       const formData = new FormData();
       formData.append("image", file);
-      setAbreviation(null);
+      setAbbreviations(null);
+      setFraudDetections([]);
+      setMedicalActs([]);
 
       try {
         const response = await axios.post("http://127.0.0.1:8000/api/classify_extract/", formData, {
           headers: { "Content-Type": "multipart/form-data" },
         });
         setDocumentType(response.data.type);
-        setData(response.data.extracted_data);
-        setAbreviation(response.data.abreviation);
+        setExtractedData(response.data.extracted_data || {});
+        setAbbreviations(response.data.abbreviations || []);
+        setFraudDetections(response.data.fraud_detections || []);
+        setMedicalActs(response.data.medical_acts || []);
       } catch (error) {
         console.error("Erreur lors de l'envoi de l'image:", error);
       } finally {
@@ -120,7 +126,7 @@ const Home = (props) => {
   };
 
   const readTableContent = async () => {
-    const textToRead = JSON.stringify(data);
+    const textToRead = JSON.stringify({ extracted_data: extractedData, medical_acts: medicalActs });
     try {
       await axios.post("http://127.0.0.1:8000/api/text-to-speech/", {
         phrase: textToRead,
@@ -132,13 +138,18 @@ const Home = (props) => {
   };
 
   const handleEdit = (key, value, parentKey = null, index = null) => {
-    const updated = { ...data };
-    if (parentKey && Array.isArray(data[parentKey])) {
-      updated[parentKey][index][key] = value;
+    if (parentKey === "medical_acts") {
+      const updatedActs = [...medicalActs];
+      updatedActs[index][key] = value;
+      setMedicalActs(updatedActs);
+    } else if (parentKey === "details") {
+      const updatedActs = [...medicalActs];
+      updatedActs[index[0]].details[index[1]][key] = value;
+      setMedicalActs(updatedActs);
     } else {
-      updated[key] = value;
+      const updated = { ...extractedData, [key]: value };
+      setExtractedData(updated);
     }
-    setData(updated);
   };
 
   const saveDocument = async () => {
@@ -146,7 +157,8 @@ const Home = (props) => {
       await axios.post("http://127.0.0.1:8000/api/save-scanned-document/", {
         user: props.user,
         document_type: documentType || "unknown",
-        detected_fields: data,
+        detected_fields: extractedData,
+        medical_acts: medicalActs,
         status: "pending",
       });
       alert("Document saved successfully!");
@@ -159,29 +171,42 @@ const Home = (props) => {
   const handleAddColumn = () => {
     if (!newColumnName.trim()) return;
 
-    const updatedData = { ...(translatedData || data) };
-    
+    const updatedExtracted = { ...(translatedData?.extracted_data || extractedData) };
+    const updatedActs = [...(translatedData?.medical_acts || medicalActs)];
+
     if (newColumnType === "array") {
-      if (updatedData.date_honoraires) {
-        updatedData[newColumnName] = updatedData.date_honoraires.map(() => ({}));
-      } else {
-        updatedData[newColumnName] = [{}];
-      }
+      updatedExtracted[newColumnName] = medicalActs.map(() => ({}));
     } else {
-      updatedData[newColumnName] = "";
+      updatedExtracted[newColumnName] = "";
     }
 
     if (translatedData) {
-      setTranslatedData(updatedData);
+      setTranslatedData({ extracted_data: updatedExtracted, medical_acts: updatedActs });
     } else {
-      setData(updatedData);
+      setExtractedData(updatedExtracted);
+      setMedicalActs(updatedActs);
     }
 
     setNewColumnName("");
     setShowAddColumnModal(false);
   };
 
-  const displayData = translatedData || data;
+  const displayData = translatedData?.extracted_data || extractedData || {};
+  const displayActs = translatedData?.medical_acts || medicalActs || [];
+
+  const formatKey = (key) => {
+    const keyMap = {
+      "matriculeadherant": "Matricule Adhérent",
+      "nomprenomadherant": "Nom Prénom Adhérent",
+      "datedenaissancestar": "Date de Naissance",
+      "matriculecnam": "Matricule CNAM",
+      "nom et prenom": "Nom et Prénom",
+      "matriculefiscal": "Matricule Fiscal",
+      "adresse": "Adresse",
+      "ID": "ID"
+    };
+    return keyMap[key] || key;
+  };
 
   return (
     <div>
@@ -189,33 +214,32 @@ const Home = (props) => {
       <div className="home-container">
         <div className="upload-section">
           {previewImage ? (
-              <>
-                <img
-                  src={previewImage}
-                  alt="uploaded preview"
-                  className="preview-image"
-                  onClick={() => setPreviewMode(true)}
-                />
-                {previewMode && (
-                  <div className="lightbox" onClick={() => setPreviewMode(false)}>
-                    <img
-                      src={previewImage}
-                      alt="Full screen"
-                      className="lightbox-image"
-                      onClick={(e) => e.stopPropagation()}
-                    />
-                  </div>
-                )}
-              </>
-            ):(<p>Upload your Image... To extract your data</p>)}
-          
+            <div className="preview-container" style={{ position: "relative" }}>
+              <img
+                src={previewImage}
+                alt="uploaded preview"
+                className="preview-image"
+                onClick={() => setPreviewMode(true)}
+              />
+              {previewMode && (
+                <div className="lightbox" onClick={() => setPreviewMode(false)}>
+                  <img
+                    src={previewImage}
+                    alt="Full screen"
+                    className="lightbox-image"
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                </div>
+              )}
+            </div>
+          ) : (
+            <p>Téléversez votre image pour extraire les données...</p>
+          )}
           <div className="upload-buttons">
-            
             <label className="btn upload-document">
-              <FaUpload/> Upload Image
+              <FaUpload /> Téléverser une image
               <input type="file" accept="image/*" onChange={handleImageUpload} style={{ display: "none" }} />
             </label>
-            {/*selectedImageName && <span className="file-name">{selectedImageName}</span>*/}
           </div>
         </div>
         {selectedImageName ? (
@@ -229,7 +253,7 @@ const Home = (props) => {
                 <div className="data-box">
                   <div className="title-select">
                     {documentType && (
-                      <p>Document Type: <strong>{documentType}</strong></p>
+                      <p>Type de document: <strong>{documentType}</strong></p>
                     )}
                     {documentType === "Bulletin de soin" && (
                       <select onChange={(e) => setLanguage(e.target.value)} value={language}>
@@ -239,9 +263,9 @@ const Home = (props) => {
                       </select>
                     )}
                   </div>
-                  {documentType === "Bulletin de soin" && (
+                  {documentType === "Bulletin de soin" ? (
                     <>
-                      <h3>Extracted Data</h3>
+                      <h3>Données extraites</h3>
                       {loadingTranslation ? (
                         <div className="spinner-container">
                           <div className="spinner"></div>
@@ -251,130 +275,204 @@ const Home = (props) => {
                           <table className="structured-table">
                             <thead>
                               <tr>
-                                {Object.entries(displayData || {}).map(([key, value]) => {
-                                  if (Array.isArray(value) && key === "date_honoraires") {
-                                    return (
-                                      <>
-                                        <th key="date">date</th>
-                                        <th key="designation">designation</th>
-                                        <th key="honoraire">honoraire</th>
-                                      </>
-                                    );
-                                  } else if (Array.isArray(value) && typeof value[0] === "object") {
-                                    return value[0] && Object.keys(value[0]).map((subKey) => (
-                                      <th key={`${key}-${subKey}`}>{`${key}.${subKey}`}</th>
-                                    ));
-                                  } else {
-                                    return <th key={key}>{key}</th>;
-                                  }
-                                })}
+                                {Object.keys(displayData).map((key) => (
+                                  <th key={key}>{formatKey(key)}</th>
+                                ))}
+                                {displayActs.length > 0 && (
+                                  <>
+                                    <th>Date</th>
+                                    <th>Désignation</th>
+                                    <th>Honoraire</th>
+                                  </>
+                                )}
                               </tr>
                             </thead>
-                            <tbody key={language + JSON.stringify(displayData)}>
+                            <tbody>
                               <tr>
-                                {Object.entries(displayData || {}).map(([key, value]) => {
-                                  if (Array.isArray(value) && key === "date_honoraires") {
-                                    return (
-                                      <>
-                                        <td key="date">
-                                          {value.map((item, i) => (
-                                            <div key={`date-${i}`}>
+                                {Object.entries(displayData).map(([key, value]) => (
+                                  <td key={key}>
+                                    <EditableCell
+                                      value={value || "---"}
+                                      onChange={(val) => handleEdit(key, val)}
+                                    />
+                                  </td>
+                                ))}
+                                {displayActs.length > 0 ? (
+                                  <>
+                                    <td>
+                                      {displayActs.map((act, i) => (
+                                        <div key={`date-${i}`}>
+                                          <EditableCell
+                                            value={act.date || "---"}
+                                            onChange={(val) => handleEdit("date", val, "medical_acts", i)}
+                                          />
+                                        </div>
+                                      ))}
+                                    </td>
+                                    <td>
+                                      {displayActs.map((act, i) => (
+                                        <div key={`designation-${i}`}>
+                                          {act.details
+                                            ?.filter(d => d.type === "designation")
+                                            .map((d, j) => (
                                               <EditableCell
-                                                value={item.date || "---"}
-                                                onChange={(val) => handleEdit("date", val, key, i)}
+                                                key={`designation-${i}-${j}`}
+                                                value={d.value || "---"}
+                                                onChange={(val) => handleEdit("value", val, "details", [i, j])}
                                               />
-                                            </div>
-                                          ))}
-                                        </td>
-                                        <td key="designation">
-                                          {value.map((item, i) => (
-                                            <div key={`designation-${i}`}>
-                                              <EditableCell
-                                                value={item.designation || "---"}
-                                                onChange={(val) => handleEdit("designation", val, key, i)}
-                                              />
-                                            </div>
-                                          ))}
-                                        </td>
-                                        <td key="honoraire">
-                                          {value.map((item, i) => (
-                                            <div key={`honoraire-${i}`}>
-                                              <EditableCell
-                                                value={item.honoraire || "---"}
-                                                onChange={(val) => handleEdit("honoraire", val, key, i)}
-                                              />
-                                            </div>
-                                          ))}
-                                        </td>
-                                      </>
-                                    );
-                                  } else if (Array.isArray(value) && typeof value[0] === "object") {
-                                    return value[0] && Object.keys(value[0]).map((subKey) => (
-                                      <td key={`${key}-${subKey}`}>
-                                        {value.map((item, i) => (
-                                          <div key={`${key}-${subKey}-${i}`}>
+                                            ))}
+                                          {(!act.details || act.details.filter(d => d.type === "designation").length === 0) && (
                                             <EditableCell
-                                              value={item[subKey] || "---"}
-                                              onChange={(val) => handleEdit(subKey, val, key, i)}
+                                              value="---"
+                                              onChange={(val) => {
+                                                const newDetails = [...(act.details || []), { type: "designation", value: val }];
+                                                handleEdit("details", newDetails, "medical_acts", i);
+                                              }}
                                             />
-                                          </div>
-                                        ))}
-                                      </td>
-                                    ));
-                                  } else {
-                                    return (
-                                      <td key={key}>
-                                        <EditableCell 
-                                          value={value || "---"} 
-                                          onChange={(val) => handleEdit(key, val)} 
-                                        />
-                                      </td>
-                                    );
-                                  }
-                                })}
+                                          )}
+                                        </div>
+                                      ))}
+                                    </td>
+                                    <td>
+                                      {displayActs.map((act, i) => (
+                                        <div key={`honoraire-${i}`}>
+                                          {act.details
+                                            ?.filter(d => d.type === "honoraire")
+                                            .map((d, j) => (
+                                              <EditableCell
+                                                key={`honoraire-${i}-${j}`}
+                                                value={d.value || "---"}
+                                                onChange={(val) => handleEdit("value", val, "details", [i, j])}
+                                              />
+                                            ))}
+                                          {(!act.details || act.details.filter(d => d.type === "honoraire").length === 0) && (
+                                            <EditableCell
+                                              value="---"
+                                              onChange={(val) => {
+                                                const newDetails = [...(act.details || []), { type: "honoraire", value: val }];
+                                                handleEdit("details", newDetails, "medical_acts", i);
+                                              }}
+                                            />
+                                          )}
+                                        </div>
+                                      ))}
+                                    </td>
+                                  </>
+                                ) : (
+                                  <>
+                                    <td>
+                                      <EditableCell
+                                        value="---"
+                                        onChange={(val) => setMedicalActs([{ date: val, details: [] }])}
+                                      />
+                                    </td>
+                                    <td>
+                                      <EditableCell
+                                        value="---"
+                                        onChange={(val) => setMedicalActs([{ date: "", details: [{ type: "designation", value: val }] }])}
+                                      />
+                                    </td>
+                                    <td>
+                                      <EditableCell
+                                        value="---"
+                                        onChange={(val) => setMedicalActs([{ date: "", details: [{ type: "honoraire", value: val }] }])}
+                                      />
+                                    </td>
+                                  </>
+                                )}
                               </tr>
                             </tbody>
                           </table>
+
+                          {abbreviations && abbreviations.length > 0 && (
+                            <div className="abreviations-list">
+                              <h4>Abbréviations détectées :</h4>
+                              <ul>
+                                {abbreviations.map((abbr, index) => {
+                                  const [key, value] = Object.entries(abbr)[0];
+                                  return (
+                                    <li key={index}>
+                                      <strong>{key}</strong> : {value}
+                                    </li>
+                                  );
+                                })}
+                              </ul>
+                            </div>
+                          )}
+
+                          {fraudDetections.some(d => d.is_fraud) && (
+                            <div className="fraud-detections-section">
+                              <h3>Détections de fraude</h3>
+                              <div className="fraud-detections-grid">
+                                {fraudDetections
+                                  .filter(detection => detection.is_fraud)
+                                  .map((detection, index) => (
+                                    <div key={index} className="fraud-detection-card">
+                                      {detection.cropped_image && (
+                                        <div className="fraud-image-container">
+                                          <img
+                                            src={`data:image/jpeg;base64,${detection.cropped_image}`}
+                                            alt={`Détection de fraude - ${detection.field}`}
+                                            className="fraud-image"
+                                          />
+                                        </div>
+                                      )}
+                                      <div className="fraud-details">
+                                        <h4>{detection.field === "date" ? "Date suspecte" : "Honoraire suspect"}</h4>
+                                        <p>Valeur: {detection.value}</p>
+                                        <p>Statut: Fraude détectée avec  {detection.fraud_probability.toFixed(2)}% de confiance</p>
+                                      </div>
+                                      
+                                    </div>
+                                  ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {(!fraudDetections || fraudDetections.length === 0 || !fraudDetections.some(d => d.is_fraud)) && (
+                            <div className="fraudAlert normal">
+                              <div className="fraud-content">
+                                <h3>Risque de fraude inexistant</h3>
+                                <p>Aucun indicateur de fraude détecté.</p>
+                              </div>
+                            </div>
+                          )}
+
                           <div className="save-button-container">
-                            <button 
-                              className="add-column-button"
-                              onClick={() => setShowAddColumnModal(true)}
-                            >
-                              + Ajouter Colonne
-                            </button>
-                            <button className="save-button" onClick={saveDocument}>Save</button>
+                            <button className="save-button" onClick={saveDocument}>Enregistrer</button>
                           </div>
                         </>
                       )}
-                      {abreviation && Object.keys(abreviation).length > 0 ? (
-                        <div className="abreviations-list">
-                          <h4>Abbréviations détectées :</h4>
+                    </>
+                  ) : (
+                    <div className="other-document-message">
+                      <p>Document de type: {documentType}</p>
+                      {displayData && Object.keys(displayData).length > 0 && (
+                        <div className="simple-data-display">
+                          <h4>Données extraites:</h4>
                           <ul>
-                            {Object.entries(abreviation).map(([key, value], index) => (
-                              <li key={index}>
-                                <strong>{key}</strong> : {value}
+                            {Object.entries(displayData).map(([key, value]) => (
+                              <li key={key}>
+                                <strong>{formatKey(key)}:</strong> {value || "---"}
                               </li>
                             ))}
                           </ul>
                         </div>
-                      ) : (
-                        <div className="abreviations-list">
-                          <h4>Aucune abréviation détectée.</h4>
-                        </div>
                       )}
-                    </>
+                    </div>
                   )}
                 </div>
                 {documentType === "Bulletin de soin" && (
                   <div className="icons-container">
                     <FaVolumeUp className="icon" title="Lire à haute voix" onClick={readTableContent} />
+                    
                   </div>
                 )}
               </div>
             </div>
           )
         ) : (
-          <div>Upload Document to see more ...</div>
+          <div>Téléversez un document pour voir plus de détails...</div>
         )}
         {showAddColumnModal && (
           <div className="modal-overlay">
@@ -406,10 +504,19 @@ const Home = (props) => {
             </div>
           </div>
         )}
-        <footer className="footer">By: DataWizards</footer>
+        <footer className="footer">Par: DataWizards</footer>
       </div>
     </div>
   );
 };
 
 export default Home;
+
+/**
+ <button
+                      className="add-column-button"
+                      onClick={() => setShowAddColumnModal(true)}
+                    >
+                      + Ajouter Colonne
+                    </button>
+ */
